@@ -60,9 +60,7 @@ type Quartz struct {
 	running   bool
 	snapshot  chan []*Job
 	modifyJob chan *Job
-	jobAddError  chan error
-	jobModifyError  chan error
-	jobRemoveError chan  error
+	jobError  chan error
 	lk        sync.Mutex
 }
 
@@ -74,9 +72,7 @@ func New() *Quartz {
 		removeJob: make(chan int),
 		modifyJob: make(chan *Job),
 		snapshot:  make(chan []*Job),
-		jobAddError:  make(chan error),
-		jobModifyError:make(chan  error),
-		jobRemoveError:make(chan  error),
+		jobError:  make(chan error),
 	}
 }
 
@@ -108,7 +104,7 @@ func (qz *Quartz) scheduleJob(schedule Schedule, job *Job) error {
 		qz.addJob <- job
 	}
 
-	return <-qz.jobAddError
+	return <-qz.jobError
 
 }
 
@@ -154,7 +150,7 @@ func (qz *Quartz) RemoveJob(jobId int) error {
 		qz.removeJob <- jobId
 	}
 
-	return <-qz.jobRemoveError
+	return <-qz.jobError
 }
 
 // modify jobinfo
@@ -178,7 +174,7 @@ func (qz *Quartz) ModifyJob(job *Job) error {
 		log.Println("modify job....job = ", job)
 		qz.modifyJob <- job
 
-		return <-qz.jobModifyError
+		return <-qz.jobError
 	}
 
 }
@@ -239,10 +235,10 @@ func (qz *Quartz) run() {
 				qz.jobPool = append(qz.jobPool, newJob)
 				fmt.Println("now is ", now, "add effective is ", newJob.schedule.Next(now))
 				newJob.Next = newJob.schedule.Next(now)
-				qz.jobAddError <- nil
+				qz.jobError <- nil
 
 			} else {
-				qz.jobAddError <- Error_EXISTS_JOB
+				qz.jobError <- Error_EXISTS_JOB
 			}
 		// remove the exists  job
 		case removeJobId := <-qz.removeJob:
@@ -251,9 +247,9 @@ func (qz *Quartz) run() {
 			log.Println("remove a job removeJobId= ", removeJobId)
 			if index != -1 {
 				qz.jobPool = qz.jobPool[:index+copy(qz.jobPool[index:], qz.jobPool[index+1:])]
-				qz.jobRemoveError <- nil
+				qz.jobError <- nil
 			} else {
-				qz.jobRemoveError <- Error_NOT_EXISTS_JOB
+				qz.jobError <- Error_NOT_EXISTS_JOB
 			}
 
 		case <-qz.Stop:
@@ -268,7 +264,7 @@ func (qz *Quartz) run() {
 			index := qz.hasExistsJob(modifyJob.Id)
 			if index == -1 {
 				log.Println("=#####################=")
-				qz.jobModifyError <- Error_NOT_EXISTS_JOB
+				qz.jobError <- Error_NOT_EXISTS_JOB
 			} else {
 				now = time.Now().Local()
 				nextTime := modifyJob.schedule.Next(now)
@@ -276,7 +272,7 @@ func (qz *Quartz) run() {
 				modifyJob.Next = nextTime
 				qz.jobPool[index] = modifyJob
 				log.Println("=***************=", modifyJob, "nextTime = ", nextTime)
-				qz.jobModifyError <- nil
+				qz.jobError <- nil
 			}
 
 		}
